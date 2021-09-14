@@ -5,63 +5,26 @@ import time
 import can  # add thư viện canbus
 import pymysql  # database
 import os
-import math
-import numpy as np
 import RPi.GPIO as GPIO  # add library GPIO
 from threading import Thread  # add library threading run multiple def
-from datetime import datetime
 
 time.sleep(5) #delay đợi server online 5
 
+c_arr = 0  # biến counter array
+arr = [0.0, 0.0]  # array
 error = 0
-counter = 0
-temp_b = 1
-temp_c = 0
+arr_permission = [0.0, 0.0]  # array
 
-# khai báo phương thức và tên của giao thức can bus trong Raspberry
-bus = can.interface.Bus(channel='can0', bustype='socketcan_native')
-
-# khai báo các id cần gửi của canbus
-id_canbus = [101, 201, 301, 401, 501]
-# Khai báo các dư liệu cần gửi qua canbus
-data = [(00, 00, 00, 00,  6, 00,  2, 00), (00, 00, 00, 00,  1, 00,  2, 00),  # go up and down
-        (00, 00, 00, 00,  8, 00,  2, 00), (00, 00, 00, 00,  7, 00,  2, 00),  # turn left and right
-        (00, 00, 00, 00,  9, 00,  2, 00), (00, 00, 00, 00,  4, 00,  2, 00),  # around left and right
-        (00, 00, 00, 00, 00, 00, 00, 00),  # stop
-        (00, 00, 00, 00,  1,  1, 00, 00), (00, 00, 00, 00,  6,  1, 00, 00),  # screw go up and down
-        (00, 00, 00, 00,  10,  00, 2, 00)] # run fast
-# khai báo database phpmyadmin
-connection = pymysql.connect(
-    host="localhost", user="root", passwd="raspberry", database="tanker")
-cursor = connection.cursor()
 
 def dextohex(decimal):
     return hex(decimal)[2:]
 
-def take_angle():
-    connection = pymysql.connect(
-            host="localhost", user="root", passwd="raspberry", database="tanker")
-    cursor = connection.cursor()
 
-    retrive_1 = "Select * from GY25;"
-    # executing the quires
-    cursor.execute(retrive_1)
-    rows_1 = cursor.fetchall()
-    return rows_1[0][3]
-
-def canbus(data_msg):
-    global bus
-
-    msg = can.Message(arbitration_id=301,
-                    data=data_msg,
-                    is_extended_id=False)  # khai báo id mang giá trị
-    bus.send(msg)  # send giá trị với id đã đc khai báo bên trên
-
-def action():  # void main              
-                                      
+def action():  # void main
+    arr_permission_time = []                                                     
     # biến kết nối vào database cho việc update
     update_conn = pymysql.connect(
-        host="localhost", user="root", passwd="raspberry", database="tanker")
+        host="localhost", user="root", passwd="raspberry", database="tanker") #localhost is 192.168.30.80
     # biết chạy kết nối vào database cho việc update
     update_cursor = update_conn.cursor()
     # queries for retrievint all rows
@@ -73,47 +36,63 @@ def action():  # void main
     update_conn.commit()  # xác nhận update
 
     # khai báo database phpmyadmin
-    # con_permission = pymysql.connect(
-    #     host="localhost", user="root", passwd="raspberry", database="tanker")
-    # cursor_permission = con_permission.cursor()
-
-    arr = np.array([0.0])
+    con_permission = pymysql.connect(
+        host="localhost", user="root", passwd="raspberry", database="tanker")
+    cursor_permission = con_permission.cursor()
 
     GPIO.setwarnings(False)
     GPIO.setmode(GPIO.BCM)
     GPIO.setup(17, GPIO.OUT)
-    time.sleep(1)     #time.sleep(1)
+    time.sleep(0.5)     #time.sleep(1)
     GPIO.output(17, True)
-    time.sleep(2)     #time.sleep(2)
+    time.sleep(1)     #time.sleep(2)
     GPIO.output(17, False)
-    time.sleep(2)     #time.sleep(2)
+    time.sleep(1)     #time.sleep(2)
 
     while True:
+        global c_arr  # lấy biến đếm array bên ngoài
+        global arr  # lấy biến array từ biên ngoài
         global arr_permission  # lấy biến array từ biên ngoài
         global error  # lấy biến từ biên ngoài
-        global counter
-        global temp_b
-        global temp_c
-    
-    # -----------------------------------------------đọc dữ liệu từ database--------------------------------------------------------
+
+        # khai báo phương thức và tên của giao thức can bus trong Raspberry
+        bus = can.interface.Bus(channel='can0', bustype='socketcan_native')
+
+        # khai báo các id cần gửi của canbus
+        id_canbus = [101, 201, 301, 401, 501]
+        # Khai báo các dư liệu cần gửi qua cacbus
+        data = [(00, 00, 00, 00,  6, 00,  2, 00), (00, 00, 00, 00,  1, 00,  2, 00),  # go up and down
+                (00, 00, 00, 00,  8, 00,  2, 00), (00, 00, 00, 00,  7, 00,  2, 00),  # turn left and right
+                (00, 00, 00, 00,  9, 00,  2, 00), (00, 00, 00, 00,  4, 00,  2, 00),  # around left and right
+                (00, 00, 00, 00, 00, 00, 00, 00),  # stop
+                (00, 00, 00, 00,  1,  1, 00, 00), (00, 00, 00, 00,  6,  1, 00, 00),  # screw go up and down
+                (00, 00, 00, 00,  10,  00, 2, 00)] # run fast
+                
+     # -------------------------------------------đọc dữ liệu từ database--------------------------------------------
         # khai báo database phpmyadmin
         connection = pymysql.connect(
             host="localhost", user="root", passwd="raspberry", database="tanker")
         cursor = connection.cursor()
         # queries for retrievint all rows
         retrive = "Select * from move_control;"
+
         # executing the quires
         cursor.execute(retrive)
         rows = cursor.fetchall()
 
-        check_connection = rows[0][1] - rows[0][0]
-        # print("level=",rows[0][1])
-        if rows[0][1] == 0:
-            counter = 0
-            temp_b = 1
+        # lấy giá trị time từ database add vào giá trị mảng thứ 1
+        arr[c_arr] = int(rows[0][2])
+        # print(arr[c_arr])
+
+        c_arr += 1  # điếm mảng tăng 1
+        # hiệu của giá trị thứ 2 và giá trị thứ 1 nhất trong mảng
+        check_connection = abs(arr[1] - arr[0])
+        # check_connection = rows[0][1] - rows[0][0]
+        # print(check_connection)
         
-    # ---------------------------------------------sét giá trị từ database chuẩn bị để gửi cho canbus-------------------------------
-        if check_connection >= 0:  # nếu hiệu của giá trị mảng thứ 2 và giá trị thứ 1 >= 1 thì :
+     # ---------------------------------------------sét giá trị từ database chuẩn bị để gửi cho canbus-------------------------------
+        if check_connection >= 1:  # nếu hiệu của giá trị mảng thứ 2 và giá trị thứ 1 >= 1 thì :
+        # if check_connection != 0:
             if rows[0][1] == 6:
                 data_msg = data[0]
             #wheel go down
@@ -149,219 +128,112 @@ def action():  # void main
             # executing the quires
             update_cursor.execute(update_retrive)
             update_conn.commit()
-    # ------------------------------------go race ----------------------------------
-        if check_connection >= 0:
-            if rows[0][1] == 13 and counter == 0:
-                # canbus(data[0])
-                # time.sleep(8)
-                # while True:
-                #     if temp_c == 0:
-                #         arr = np.append(arr, take_angle())
-                #         temp_c = 1
-                #     # print("arr[1]=",arr[1])
-                #     if float(arr[1]) > 0:
-                #         meas = float(arr[1]) - float(take_angle())
-                #         # print("meas1=",meas)
-                #         if meas > 154 and meas < 206:
-                #             canbus(data[6])
-                #             temp_c = 0
-                #             arr = np.array([0.0])
-                #             break
-                #         else:
-                #             canbus(data[4])
-                #             time.sleep(0.2)
-                #     else:
-                #         meas = float(take_angle()) - float(arr[1])
-                #         # print("meas2=",meas)
-                #         if meas > 154 and meas < 206:
-                #             canbus(data[6])
-                #             temp_c = 0
-                #             arr = np.array([0.0])
-                #             break
-                #         else:
-                #             canbus(data[4])
-                #             time.sleep(0.2)
-                # canbus(data[6])
-                # time.sleep(0.6)
-                canbus(data[0])
-                time.sleep(10)
-                while True:
-                    if temp_c == 0:
-                        arr = np.append(arr, take_angle())
-                        temp_c = 1
-                    # print("arr[1]=",arr[1])
-                    if float(arr[1]) > 0:
-                        meas = float(arr[1]) - float(take_angle())
-                        # print("meas1=",meas)
-                        if meas > 154 and meas < 206:
-                            canbus(data[6])
-                            temp_c = 0
-                            arr = np.array([0.0])
-                            break
-                        else:
-                            canbus(data[4])
-                            time.sleep(0.2)
-                    else:
-                        meas = float(take_angle()) - float(arr[1])
-                        # print("meas2=",meas)
-                        if meas > 154 and meas < 206:
-                            canbus(data[6])
-                            temp_c = 0
-                            arr = np.array([0.0])
-                            break
-                        else:
-                            canbus(data[4])
-                            time.sleep(0.2)
-                canbus(data[6])
-                time.sleep(0.6)
-                canbus(data[0])
-                time.sleep(10)
-                while True:
-                    if temp_c == 0:
-                        arr = np.append(arr, take_angle())
-                        temp_c = 1
-                    # print("arr[1]=",arr[1])
-                    if float(arr[1]) > 0:
-                        meas = float(arr[1]) - float(take_angle())
-                        # print("meas1=",meas)
-                        if meas > 154 and meas < 206:
-                            canbus(data[6])
-                            temp_c = 0
-                            arr = np.array([0.0])
-                            break
-                        else:
-                            canbus(data[5])
-                            time.sleep(0.2)
-                    else:
-                        meas = float(take_angle()) - float(arr[1])
-                        # print("meas2=",meas)
-                        if meas > 154 and meas < 206:
-                            canbus(data[6])
-                            temp_c = 0
-                            arr = np.array([0.0])
-                            break
-                        else:
-                            canbus(data[5])
-                            time.sleep(0.2)
-                canbus(data[6])
-                time.sleep(0.6)
-                canbus(data[0])
-                time.sleep(10)
-                while True:
-                    if temp_c == 0:
-                        arr = np.append(arr, take_angle())
-                        temp_c = 1
-                    # print("arr[1]=",arr[1])
-                    if float(arr[1]) > 0:
-                        meas = float(arr[1]) - float(take_angle())
-                        # print("meas1=",meas)
-                        if meas > 154 and meas < 206:
-                            canbus(data[6])
-                            temp_c = 0
-                            arr = np.array([0.0])
-                            break
-                        else:
-                            canbus(data[4])
-                            time.sleep(0.2)
-                    else:
-                        meas = float(take_angle()) - float(arr[1])
-                        # print("meas2=",meas)
-                        if meas > 154 and meas < 206:
-                            canbus(data[6])
-                            temp_c = 0
-                            arr = np.array([0.0])
-                            break
-                        else:
-                            canbus(data[4])
-                            time.sleep(0.2)
-                canbus(data[6])
-                time.sleep(0.6)
-                canbus(data[0])
-                time.sleep(10)
-                while True:
-                    if temp_c == 0:
-                        arr = np.append(arr, take_angle())
-                        temp_c = 1
-                    # print("arr[1]=",arr[1])
-                    if float(arr[1]) > 0:
-                        meas = float(arr[1]) - float(take_angle())
-                        # print("meas1=",meas)
-                        if meas > 154 and meas < 206:
-                            canbus(data[6])
-                            temp_c = 0
-                            arr = np.array([0.0])
-                            break
-                        else:
-                            canbus(data[5])
-                            time.sleep(0.2)
-                    else:
-                        meas = float(take_angle()) - float(arr[1])
-                        # print("meas2=",meas)
-                        if meas > 154 and meas < 206:
-                            canbus(data[6])
-                            temp_c = 0
-                            arr = np.array([0.0])
-                            break
-                        else:
-                            canbus(data[5])
-                            time.sleep(0.2)
-                canbus(data[6])
-                time.sleep(0.6)
-                canbus(data[0])
-                time.sleep(3)
-                canbus(data[6])
-                time.sleep(0.6)
-                counter = counter + 1     
+     # ------------------------------------bắt đầu gửi giá trị đến canbus----------------------------------
         for i in range(len(id_canbus)):  # send giá trị data đến địa chỉ ID đã định sẵn
-                if id_canbus[i] == 101 or id_canbus[i] == 201:
-                    msg = can.Message(arbitration_id=id_canbus[i],
-                                    data=[00, 00, 00, 00, 00, 00, 00, 00],
-                                    is_extended_id=False)  # khai báo id mang giá trị
-                else:
-                    msg = can.Message(arbitration_id=id_canbus[i],
-                                    data=data_msg,
-                                    is_extended_id=False)  # khai báo id mang giá trị
-                try:
-                    bus.send(msg)  # send giá trị với id đã đc khai báo bên trên
-                    # delay khoảng 1s nếu có 5 địa chỉ dc gửi 0.182s
-                    time.sleep(0.09)  # delay time.sleep(0.2)
-                    dataCanbus = bus.recv(0.0)
-                    #duy
-                    if dataCanbus is None:
-                        print("Don't Have Any Response From CANBUS")
+            if id_canbus[i] == 101 or id_canbus[i] == 201:
+                msg = can.Message(arbitration_id=id_canbus[i],
+                                  data=[00, 00, 00, 00, 00, 00, 00, 00],
+                                  is_extended_id=False)  # khai báo id mang giá trị
+            else:
+                msg = can.Message(arbitration_id=id_canbus[i],
+                                  data=data_msg,
+                                  is_extended_id=False)  # khai báo id mang giá trị
+            try:
+                bus.send(msg)  # send giá trị với id đã đc khai báo bên trên
+                # delay khoảng 1s nếu có 5 địa chỉ dc gửi 0.182s
+                time.sleep(0.2)  # delay time.sleep(0.2)
+                dataCanbus = bus.recv(0.0)
+                #duy
+                if dataCanbus is None:
+                    print("Don't Have Any Response From CANBUS")
 
-                        # queries for retrievint all rows
-                        update_retrive = "UPDATE `move_control` SET `error_can` = 'OK' WHERE `move_control`.`id` = 1;"
-
-                        # executing the quires
-                        update_cursor.execute(update_retrive)
-                        update_conn.commit()
-
-                    else:
-                        if dataCanbus.arbitration_id == 102:
-                            voltage = "0x" + \
-                                dextohex(dataCanbus.data[5]) + \
-                                dextohex(dataCanbus.data[4])
-                            voltage2 = int(voltage, 16)
-
-                            # queries for retrievint all rows
-
-                            update_retrive = "UPDATE `move_control` SET `battery` = " + \
-                                str(voltage2) + \
-                                ",  `error_can` = 'OK' WHERE `move_control`.`id` = 1;"
-                            update_cursor.execute(update_retrive)
-                            update_conn.commit()
-                    error = 0
-
-                except can.CanError:
-                    print(can.CanError)
                     # queries for retrievint all rows
                     update_retrive = "UPDATE `move_control` SET `error_can` = 'OK' WHERE `move_control`.`id` = 1;"
 
                     # executing the quires
                     update_cursor.execute(update_retrive)
                     update_conn.commit()
-                    error = 1 
+
+                else:
+                    if dataCanbus.arbitration_id == 102:
+                        voltage = "0x" + \
+                            dextohex(dataCanbus.data[5]) + \
+                            dextohex(dataCanbus.data[4])
+                        voltage2 = int(voltage, 16)
+
+                        # queries for retrievint all rows
+
+                        update_retrive = "UPDATE `move_control` SET `battery` = " + \
+                            str(voltage2) + \
+                            ",  `error_can` = 'OK' WHERE `move_control`.`id` = 1;"
+
+                        update_cursor.execute(update_retrive)
+                        update_conn.commit()
+                error = 0
+
+            except can.CanError:
+                print(can.CanError)
+
+                # queries for retrievint all rows
+                update_retrive = "UPDATE `move_control` SET `error_can` = 'OK' WHERE `move_control`.`id` = 1;"
+
+                # executing the quires
+                update_cursor.execute(update_retrive)
+                update_conn.commit()
+                error = 1
+
+     # reset biến đếm mảng
+        if c_arr >= 2:
+            c_arr = 0
+
+        # permission
+
+        # queries for retrievint all rows
+        retrive_permission = "SELECT * FROM `home_users` WHERE `status_user` = 1;"
+
+        # executing the quires
+        cursor_permission.execute(retrive_permission)
+        home_users = cursor_permission.fetchall()
+
+        for i in range(len(home_users)):
+            arr_permission_time.insert(i, home_users[i][5])  # add giá trị
+
+        # print(arr_permission_time)
+        # print(home_users[1][4])
+
+        if len(arr_permission_time) >= len(home_users) * 2:
+            for i in range(len(home_users)):
+                detal = int(
+                    arr_permission_time[i]) - int(arr_permission_time[i + len(home_users)])
+                print("data", i, "=", detal)
+                if detal == 0 and error == 0: # detal = 0 khi không có sự hiện diện của khách hàng 
+                    if home_users[i][4] == '1' :
+                        # queries for retrievint all rows
+                        update_retrive = "UPDATE `home_users` SET `status_control` = '0', `permission_level` = '0' WHERE `home_users`.`id` = " + \
+                            str(home_users[i][0]) + ";"
+
+                        # executing the quires
+                        update_cursor.execute(update_retrive)
+                        update_conn.commit()
+                        print("tài khoản này là admin")
+                    else:
+                        update_retrive = "UPDATE `home_users` SET `status_control` = '0' WHERE `home_users`.`id` = " + \
+                            str(home_users[i][0]) + ";"
+
+                        update_cursor.execute(update_retrive)
+                        update_conn.commit()
+                        print("tài khoản này ko phải admin")
+                else: # detal != 0 khi có sự hiện diện của khách hàng
+                    
+                    update_retrive = "UPDATE `home_users` SET `status_control` = '1' WHERE `home_users`.`id` = " + \
+                        str(home_users[i][0]) + ";"
+
+                    update_cursor.execute(update_retrive)
+                    update_conn.commit()
+                    print("khách hàng " +str(i)+ " đang dùng")
+
+            del arr_permission_time[:] # xóa hết các giá trị có trong mảng arr_permisstion_time
+
 
 if __name__ == '__main__':
     action()
