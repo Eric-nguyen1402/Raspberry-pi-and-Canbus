@@ -4,7 +4,7 @@ First you need to add can library :
 - pip3 install python-can
 * Python 2
 - pip install python-can
- How to use Can in raspberry pi:
+# How to use Can in raspberry pi:
  1. sudo apt-get update
  2. sudo apt-get upgrade
  3. sudo apt-get install can-utils
